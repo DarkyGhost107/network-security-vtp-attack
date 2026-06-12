@@ -6,7 +6,7 @@ import struct, argparse, sys, time, os
 
 DOMINIO = "LAB-2023-0316"
 REVISION = 127
-INTERFAZ = "eth0"
+INTERFAZ = "eth1"
 MAC_VTP = "01:00:0c:cc:cc:cc"
 
 def snap(): return b'\xaa\xaa\x03\x00\x00\x0c\x20\x03'
